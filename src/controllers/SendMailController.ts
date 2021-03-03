@@ -9,6 +9,7 @@ import SendMailService from "../services/SendMailService";
 class SendMailController {
   async execute(request: Request, response: Response) {
     const { email, survey_id } = request.body;
+    const npsPath = resolve(__dirname, "..", "views", "emails", "npsMail.hbs");
     const usersRepository = getCustomRepository(UsersRepository);
     const surveysRepository = getCustomRepository(SurveysRepository);
     const surveysUsersRepository = getCustomRepository(SurveysUsersRepository);
@@ -29,24 +30,21 @@ class SendMailController {
       })
     }
 
-    const npsPath = resolve(__dirname, "..", "views", "emails", "npsMail.hbs");
     const variables = {
       name: user.name,
       title: survey.title,
       description: survey.description,
-      user_id: user.id,
+      id: "",
       link: process.env.URL_MAIL
     };
 
-    // Caso exista uma pesquisa já enviada mas sem retorno do usuário, 
-    // envia novamente a mesma pesquisa, sem criar um novo registro de pesquisa
-    // para não poluir o BD
     const surveysUserExists = await surveysUsersRepository.findOne({
-      where: [{ user_id: user.id }, { survey_id: survey.id }, { value: null }],
+      where: { user_id: user.id, survey_id: survey.id, value: null },
       relations: ["user", "survey"]
     });
 
     if (surveysUserExists) {
+      variables.id = surveysUserExists.id;
       await SendMailService.execute(email, survey.title, variables, npsPath);
       return response.json(surveysUserExists);
     }
@@ -55,8 +53,11 @@ class SendMailController {
     const surveyUser = surveysUsersRepository.create({
       user_id: user.id,
       survey_id
-    })
+    });
+
     await surveysUsersRepository.save(surveyUser);
+
+    variables.id = surveyUser.id;
 
     // Enviar e-mail para o usuário 
     await SendMailService.execute(email, survey.title, variables, npsPath);
